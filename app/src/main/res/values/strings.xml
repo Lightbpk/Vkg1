@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">Vkg</string>
     <string name="btn_start_text">GO</string>>
+    <string name="LL">LightLog</string>>
 </resources>

@@ -12,6 +12,7 @@ Button btn_go;
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        btn_go = findViewById(R.id.btn_go);
         btn_go.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
