@@ -8,6 +8,9 @@ import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.Rect;
+import android.media.AudioFormat;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -15,6 +18,9 @@ import android.view.Display;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class Game extends AppCompatActivity {
 Bitmap bitmap, pointVoice;
@@ -24,10 +30,20 @@ int x1,x2, disW, disH, pointX, pointY;
 Matrix matrix;
 float k;
 Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    public int max = 0;
+    public static Timer mTimer;
+    public static MyTimerTask mMyTimerTask;
+    public int minSize;
+    public AudioRecord ar;
+    public short[] buffer;
+    public String volMax;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(new DrawView(this));
+        minSize = AudioRecord.getMinBufferSize(16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
+        ar = new AudioRecord(MediaRecorder.AudioSource.MIC, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, minSize);
     }
     class DrawView extends SurfaceView implements SurfaceHolder.Callback {
         private DrawThread drawThread;
@@ -90,6 +106,29 @@ Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
                 return true;
         }
     }
+    class MyTimerTask extends TimerTask {
+        @Override
+        public void run() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    if (ar.getState() == AudioRecord.RECORDSTATE_STOPPED) {
+                        buffer = new short[minSize];
+                        ar.startRecording();
+                        ar.read(buffer, 0, minSize);
+                        max = 0;
+                        for (int i = 0; i < minSize; i++) {
+                            short b = buffer[i];
+                            if (b < 0) b = (short) -b;
+                            if (b > max) max = b;
+                        }
+                        volMax = "" + max;
+                        ar.stop();
+                    }
+                }
+            });
+        }
+    }
     class DrawThread extends Thread {
 
         private boolean running = false;
@@ -118,6 +157,7 @@ Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
                     }
                     canvas.drawBitmap(bitmap,rectSrc,rectDst,paint);
                     canvas.drawBitmap(pointVoice,pointX,pointY,paint);
+                    //canvas.drawText(volMax,0,0,paint);
                     //Log.d(getString(R.string.LL),"pixel "+bitmap.getPixel(pointX,pointY));
                     // Прорисовка
                     // canvas.drawColor(Color.GREEN);
