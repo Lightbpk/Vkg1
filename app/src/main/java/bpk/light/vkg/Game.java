@@ -1,14 +1,19 @@
 package bpk.light.vkg;
 
+import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.Rect;
 import android.media.MediaRecorder;
 import android.os.Handler;
+import android.preference.PreferenceManager;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.util.Log;
@@ -16,30 +21,43 @@ import android.view.Display;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
+import android.view.Window;
+import android.view.WindowManager;
 
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.Timer;
 import java.util.TimerTask;
 
 
-public class Game extends AppCompatActivity {
+public class Game extends Activity {
 
     Bitmap bitmap, bitmap1, pointVoice;
-    Rect rectSrc;
-    Rect rectDst;
-    int x1, x2, disW, disH, pointX, pointY, pointYRT = 0, volMax, k = 40;
-    Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    Rect rectSrc, rectDst, rectTextBG, rectAct;
+
+    int x1, x2, disW, disH, pointX, pointY, pointYRT = 0, volMax, kVol, level;
+    double kH,kW;
+
+
     final Handler uiHandler = new Handler();
     Timer myTimer;
     SoundMeter sm;
-
+    SharedPreferences sP;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setContentView(new DrawView(this));
+        Intent intent = getIntent();
+        level = intent.getIntExtra("level",1);
+        sP = PreferenceManager.getDefaultSharedPreferences(this);
         myTimer = new Timer();
         sm = new SoundMeter();
+        kVol =sP.getInt("kVol",40);
     }
 
     class DrawView extends SurfaceView implements SurfaceHolder.Callback {
@@ -57,16 +75,30 @@ public class Game extends AppCompatActivity {
             display.getSize(size);
             disW = size.x;
             disH = size.y;
-            pointX = disW / 2;
-            pointY = disH - 15;
-            bitmap1 = Bitmap.createBitmap(disW, disH, Bitmap.Config.ARGB_8888);
-            bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.song1);
+            pointX = 20;
+            pointY = disH - 240;
+            //bitmap1 = Bitmap.createBitmap(disW, disH, Bitmap.Config.ARGB_8888);
+            switch (level){
+                case 1:
+                    bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.song1);
+                    break;
+                case 2:
+                    bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.songeasy);
+                    break;
+                case 3:
+                    bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.songhard);
+                    break;
+            }
+            //bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.song1);
             pointVoice = BitmapFactory.decodeResource(getResources(), R.drawable.point);
-            //k = disH / bitmap.getHeight();
+            kH = disH / bitmap.getHeight();
             x1 = 0;
-            x2 = bitmap.getWidth() / 15;
+            x2 = (bitmap.getWidth()*bitmap.getHeight())/disH;
+            kW = bitmap.getWidth()/x2;
+            //x2 = bitmap.getWidth() / 5;
             Log.d(getString(R.string.LL), "Dispaly res " + disW + " x " + disH);
             Log.d(getString(R.string.LL), "bitmap res " + bitmap.getWidth() + " x " + bitmap.getHeight());
+            Log.d(getString(R.string.LL), "x2 = " + x2);
             drawThread = new DrawThread(getHolder());
             drawThread.setRunning(true);
             drawThread.start();
@@ -87,12 +119,11 @@ public class Game extends AppCompatActivity {
                     drawThread.join();
                     retry = false;
                 } catch (InterruptedException e) {
-
                 }
             }
         }
 
-        @Override
+       /* @Override // ---touch control---
         public boolean onTouchEvent(MotionEvent event) {
             if (event.getAction() == MotionEvent.ACTION_DOWN) {
 
@@ -105,20 +136,7 @@ public class Game extends AppCompatActivity {
 
             }
             return true;
-        }
-    }
-    public static Bitmap getBitmap(Canvas canvas) {
-        // mBitmap is a private value inside Canvas.
-        // time for some dirty reflection:
-        try {
-            java.lang.reflect.Field field = Canvas.class.getDeclaredField("mBitmap");
-            field.setAccessible(true);
-            Log.d("LightLog", " get Bitmap true");
-            return (Bitmap) field.get(canvas);
-        } catch (Throwable t) {
-            Log.d("LightLog", "get Bitmap false");
-            return null;
-        }
+        }*/
     }
 
     private void startAnaliz() {
@@ -186,6 +204,11 @@ public class Game extends AppCompatActivity {
 
         private boolean running = false;
         private SurfaceHolder surfaceHolder;
+        final long FPS = sP.getInt("FPS",100);
+        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        Paint paintBG = new Paint();
+        Paint paintText = new Paint();
+
 
         public DrawThread(SurfaceHolder surfaceHolder) {
             this.surfaceHolder = surfaceHolder;
@@ -197,40 +220,59 @@ public class Game extends AppCompatActivity {
 
         @Override
         public void run() {
-            Canvas canvas;
-            Canvas canvas1;
+            Canvas canvas, canvasText;
+            paintBG.setColor(Color.GRAY);
+            paintBG.setStyle(Paint.Style.FILL);
+            paintText.setTextSize(25);
+            String textSong = sP.getString("textSong",getString(R.string.TextSong));
+            Bitmap bitmapText = Bitmap.createBitmap(bitmap.getWidth(),(bitmap.getHeight()/10), Bitmap.Config.ARGB_8888);
+            canvasText = new Canvas(bitmapText);
+            canvasText.drawText(textSong,0,0,paintText);
+            long ticksPS = 1000 / FPS;
+            long startTime;
+            long sleepTime;
 
             while (running) {
                 canvas = null;
+                startTime = System.currentTimeMillis();
                 try {
+
                     canvas = surfaceHolder.lockCanvas(null);
-                    //canvas1 = new Canvas(bitmap1);
                     if (canvas == null) continue;
                     rectSrc = new Rect(x1, 0, x2, bitmap.getHeight());
                     rectDst = new Rect(0, 0, disW, disH);
+                    rectTextBG = new Rect (0,disH-(disH/10),disW,disH);
                     if (x2 < bitmap.getWidth()) {
                         x1++;
                         x2++;
                     } else running = false;
-                    pointYRT = pointY - (volMax / k);
-                    Log.d(getString(R.string.LL), "");
+                    bitmap1 = Bitmap.createBitmap(bitmap, x1, 0, x2 - x1, bitmap.getHeight());
+                    pointYRT = pointY - (volMax / kVol);
+                    try{
+                        if (bitmap1.getPixel((int) Math.round(pointX / kW), (int) Math.round(pointYRT / kW)) != -1) {
+                            running = false;  //----- voice control------
+                        }
+                    } catch (Exception e){
+                        /*Log.d(getString(R.string.LL), "y = "+(int) Math.round(pointYRT / kW));
+                        Log.d(getString(R.string.LL), "bitmap height = "+ bitmap1.getHeight());
+                        Log.d(getString(R.string.LL), "kW = "+ kW);*/
+                    }
                     canvas.drawBitmap(bitmap, rectSrc, rectDst, paint);
                     canvas.drawBitmap(pointVoice, pointX, pointYRT, paint);
-                    canvas1 = canvas;
-                    bitmap1 = getBitmap(canvas1);
-                    if(bitmap1 != null){
-                        Log.d(getString(R.string.LL),""+bitmap1.getPixel(pointX,pointYRT));
-                    }
-                    else Log.d(getString(R.string.LL),"bitmap1 Null");
-
-                    //canvas.drawText(volMax,0,0,paint);
-                    Log.d(getString(R.string.LL), "" + volMax);
-                    // Прорисовка
+                    canvas.drawRect(rectTextBG,paintBG);
+                    canvas.drawText(textSong,0-x1,disH - 50,paintText);
                 } finally {
                     if (canvas != null) {
                         surfaceHolder.unlockCanvasAndPost(canvas);
                     }
                 }
+                sleepTime = ticksPS-(System.currentTimeMillis() - startTime);
+                try {
+                    if (sleepTime > 0)
+                        sleep(sleepTime);
+                    else
+                        sleep(10);
+                } catch (Exception e) {}
             }
         }
     }
